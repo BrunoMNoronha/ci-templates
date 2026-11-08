@@ -27,6 +27,7 @@ Exemplo completo em [`examples/ci.yml`](examples/ci.yml).
 | `pnpm-version` | vazio | Vazio = campo `packageManager` do `package.json` |
 | `postgres` | `false` | Sobe PostgreSQL efêmero e exporta `DATABASE_URL` |
 | `postgres-image` | `postgres:16-alpine` | Imagem do PostgreSQL |
+| `postgres-db` | `ci` | Nome do banco efêmero (quando os testes exigem um nome específico) |
 | `prisma` | `false` | `prisma validate` e, com `postgres`, `prisma migrate deploy` |
 | `next-cache` | `true` | Cache do `.next/cache` |
 | `lint` / `typecheck` / `test` / `build` | `true` | Liga/desliga cada etapa |
