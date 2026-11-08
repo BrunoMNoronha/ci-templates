@@ -1,0 +1,187 @@
+# Workflow reutilizável de CI para projetos Node.js com pnpm.
+#
+# Uso (no repositório consumidor, em .github/workflows/ci.yml):
+#
+#   jobs:
+#     ci:
+#       uses: BrunoMNoronha/ci-templates/.github/workflows/node-ci.yml@main
+#       with:
+#         postgres: true
+#         prisma: true
+#
+# Este workflow NÃO recebe secrets. O PostgreSQL opcional é um container de
+# serviço efêmero, criado e destruído junto com o job; nenhuma URL de ambiente
+# real (Preview/Production) deve ser passada para cá.
+#
+# Atenção ao nome do check: quando chamado como reusable workflow, o check
+# aparece como "<job do chamador> / <job-name>". Rulesets que exigem checks
+# pelo nome precisam ser atualizados ao migrar um repositório.
+name: Node CI (reutilizável)
+
+on:
+  workflow_call:
+    inputs:
+      job-name:
+        description: Nome exibido do job.
+        type: string
+        default: Lint, typecheck, testes e build
+      runs-on:
+        description: Runner. Fixado para evitar migrações automáticas do ubuntu-latest.
+        type: string
+        default: ubuntu-24.04
+      timeout-minutes:
+        description: Tempo máximo do job.
+        type: number
+        default: 15
+      working-directory:
+        description: Diretório do projeto dentro do repositório.
+        type: string
+        default: .
+      node-version:
+        description: Versão do Node.js.
+        type: string
+        default: "24"
+      pnpm-version:
+        description: Versão do pnpm. Vazio = usar o campo packageManager do package.json.
+        type: string
+        default: ""
+      postgres:
+        description: Sobe um PostgreSQL efêmero e exporta DATABASE_URL.
+        type: boolean
+        default: false
+      postgres-image:
+        description: Imagem do PostgreSQL efêmero.
+        type: string
+        default: postgres:16-alpine
+      prisma:
+        description: Executa prisma validate e, com postgres, prisma migrate deploy.
+        type: boolean
+        default: false
+      next-cache:
+        description: Mantém o cache de build do Next.js (.next/cache) entre execuções.
+        type: boolean
+        default: true
+      lint:
+        description: Executa "pnpm run lint" (ignorado se o script não existir).
+        type: boolean
+        default: true
+      typecheck:
+        description: Executa "pnpm run typecheck" (ignorado se o script não existir).
+        type: boolean
+        default: true
+      test:
+        description: Executa "pnpm run test" (ignorado se o script não existir).
+        type: boolean
+        default: true
+      build:
+        description: Executa "pnpm run build" (ignorado se o script não existir).
+        type: boolean
+        default: true
+      env:
+        description: >-
+          Variáveis NÃO sensíveis exclusivas da CI, uma por linha no formato
+          CHAVE=valor. Nunca use para secrets ou URLs de ambientes reais.
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  validacao:
+    name: ${{ inputs.job-name }}
+    runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+
+    services:
+      postgres:
+        # Imagem vazia = serviço não é iniciado.
+        image: ${{ inputs.postgres && inputs.postgres-image || '' }}
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci_ephemeral
+          POSTGRES_DB: ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      CI: "true"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Exportar variáveis da CI
+        if: inputs.env != ''
+        env:
+          CI_ENV: ${{ inputs.env }}
+        run: |
+          while IFS= read -r linha; do
+            [ -z "$linha" ] && continue
+            if ! [[ "$linha" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+              echo "Linha inválida em 'env' (esperado CHAVE=valor): $linha" >&2
+              exit 1
+            fi
+            echo "$linha" >> "$GITHUB_ENV"
+          done <<< "$CI_ENV"
+
+      - name: Exportar DATABASE_URL do banco efêmero
+        if: inputs.postgres
+        run: echo "DATABASE_URL=postgresql://ci:ci_ephemeral@localhost:5432/ci?schema=public" >> "$GITHUB_ENV"
+
+      # Restaurado antes do install para que o hash não percorra node_modules.
+      - name: Cache do build do Next.js
+        if: inputs.next-cache && inputs.build
+        uses: actions/cache@v4
+        with:
+          path: ${{ inputs.working-directory }}/.next/cache
+          key: next-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}-${{ hashFiles('**/*.js', '**/*.jsx', '**/*.ts', '**/*.tsx', '!**/node_modules/**', '!**/.next/**') }}
+          restore-keys: |
+            next-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}-
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ inputs.pnpm-version }}
+          package_json_file: ${{ inputs.working-directory }}/package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: pnpm
+          cache-dependency-path: ${{ inputs.working-directory }}/pnpm-lock.yaml
+
+      - name: Instalar dependências
+        run: pnpm install --frozen-lockfile
+
+      - name: Validar schema do Prisma
+        if: inputs.prisma
+        run: pnpm exec prisma validate
+
+      - name: Aplicar migrations no banco efêmero
+        if: inputs.prisma && inputs.postgres
+        run: pnpm exec prisma migrate deploy
+
+      - name: Typecheck
+        if: inputs.typecheck
+        run: pnpm run --if-present typecheck
+
+      - name: Lint
+        if: inputs.lint
+        run: pnpm run --if-present lint
+
+      - name: Testes
+        if: inputs.test
+        run: pnpm run --if-present test
+
+      - name: Build
+        if: inputs.build
+        run: pnpm run --if-present build
