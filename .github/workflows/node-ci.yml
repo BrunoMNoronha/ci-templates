@@ -53,6 +53,12 @@ on:
         description: Imagem do PostgreSQL efêmero.
         type: string
         default: postgres:16-alpine
+      postgres-db:
+        description: >-
+          Nome do banco efêmero (usuário e senha são fixos e descartáveis).
+          Útil quando os testes só aceitam um nome de banco específico.
+        type: string
+        default: ci
       prisma:
         description: Executa prisma validate e, com postgres, prisma migrate deploy.
         type: boolean
@@ -100,11 +106,11 @@ jobs:
         env:
           POSTGRES_USER: ci
           POSTGRES_PASSWORD: ci_ephemeral
-          POSTGRES_DB: ci
+          POSTGRES_DB: ${{ inputs.postgres-db }}
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U ci -d ci"
+          --health-cmd "pg_isready -U ci -d ${{ inputs.postgres-db }}"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
@@ -136,7 +142,14 @@ jobs:
 
       - name: Exportar DATABASE_URL do banco efêmero
         if: inputs.postgres
-        run: echo "DATABASE_URL=postgresql://ci:ci_ephemeral@localhost:5432/ci?schema=public" >> "$GITHUB_ENV"
+        env:
+          POSTGRES_DB_NAME: ${{ inputs.postgres-db }}
+        run: |
+          if ! [[ "$POSTGRES_DB_NAME" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+            echo "postgres-db inválido: $POSTGRES_DB_NAME" >&2
+            exit 1
+          fi
+          echo "DATABASE_URL=postgresql://ci:ci_ephemeral@localhost:5432/${POSTGRES_DB_NAME}?schema=public" >> "$GITHUB_ENV"
 
       # Restaurado antes do install para que o hash não percorra node_modules.
       - name: Cache do build do Next.js
