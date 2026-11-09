@@ -5,14 +5,11 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # Agrupa tudo (inclusive majors) num único PR semanal: mantém as ações em
+    # runtime suportado (ex.: fim do Node 20) sem abrir vários PRs. O selftest
+    # valida o grupo antes do merge.
     groups:
       actions:
         patterns: ["*"]
-        update-types: ["minor", "patch"]
-    # Majors podem ter breaking changes que as fixtures do selftest não exercitam.
-    # Adotamos majors manualmente, validando num repo real antes de mover a tag v1.
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: chore
