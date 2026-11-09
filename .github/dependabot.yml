@@ -8,5 +8,11 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
+    # Majors podem ter breaking changes que as fixtures do selftest não exercitam.
+    # Adotamos majors manualmente, validando num repo real antes de mover a tag v1.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: chore
