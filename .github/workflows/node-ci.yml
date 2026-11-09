@@ -142,7 +142,7 @@ jobs:
       CI: "true"
 
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -176,19 +176,19 @@ jobs:
       # recente do mesmo lockfile. Evita re-hashear todo o código-fonte.
       - name: Cache do build do Next.js
         if: inputs.next-cache && inputs.build
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ inputs.working-directory }}/.next/cache
           key: next-${{ runner.os }}-${{ hashFiles(format('{0}/pnpm-lock.yaml', inputs.working-directory)) }}-${{ github.sha }}
           restore-keys: |
             next-${{ runner.os }}-${{ hashFiles(format('{0}/pnpm-lock.yaml', inputs.working-directory)) }}-
 
-      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         with:
           version: ${{ inputs.pnpm-version }}
           package_json_file: ${{ inputs.working-directory }}/package.json
 
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ inputs.node-version-file == '' && inputs.node-version || '' }}
           node-version-file: ${{ inputs.node-version-file != '' && format('{0}/{1}', inputs.working-directory, inputs.node-version-file) || '' }}

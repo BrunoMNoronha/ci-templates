@@ -67,11 +67,11 @@ jobs:
       DOTNET_GENERATE_ASPNET_CERTIFICATE: "false"
       DOTNET_NOLOGO: "true"
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: ${{ inputs.global-json-file == '' && inputs.dotnet-version || '' }}
           global-json-file: ${{ inputs.global-json-file != '' && format('{0}/{1}', inputs.working-directory, inputs.global-json-file) || '' }}
