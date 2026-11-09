@@ -1,0 +1,89 @@
+# Workflow reutilizável de CI para projetos .NET. Roda em Linux por padrão.
+# Windows custa mais e só deve ser usado com justificativa (ex.: prova offline
+# específica de plataforma), passando runs-on: windows-2025.
+#
+# Uso:
+#   jobs:
+#     ci:
+#       uses: BrunoMNoronha/ci-templates/.github/workflows/dotnet-ci.yml@v1
+#       with:
+#         global-json-file: global.json
+name: .NET CI (reutilizável)
+
+on:
+  workflow_call:
+    inputs:
+      job-name:
+        type: string
+        default: Restore, build e testes
+      runs-on:
+        type: string
+        default: ubuntu-24.04
+      timeout-minutes:
+        type: number
+        default: 20
+      working-directory:
+        type: string
+        default: .
+      dotnet-version:
+        description: Versão do SDK (usada quando global-json-file está vazio).
+        type: string
+        default: ""
+      global-json-file:
+        description: Caminho de um global.json para fixar o SDK (recomendado).
+        type: string
+        default: global.json
+      solution:
+        description: Solução ou projeto alvo. Vazio = descoberta automática.
+        type: string
+        default: ""
+      cache:
+        description: >-
+          Cache de pacotes NuGet (exige packages.lock.json). Desligue para
+          provas de restore offline.
+        type: boolean
+        default: true
+      test:
+        type: boolean
+        default: true
+      shell:
+        type: string
+        default: bash
+
+permissions:
+  contents: read
+
+jobs:
+  dotnet:
+    name: ${{ inputs.job-name }}
+    runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    defaults:
+      run:
+        shell: ${{ inputs.shell }}
+        working-directory: ${{ inputs.working-directory }}
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_GENERATE_ASPNET_CERTIFICATE: "false"
+      DOTNET_NOLOGO: "true"
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          dotnet-version: ${{ inputs.global-json-file == '' && inputs.dotnet-version || '' }}
+          global-json-file: ${{ inputs.global-json-file != '' && format('{0}/{1}', inputs.working-directory, inputs.global-json-file) || '' }}
+          cache: ${{ inputs.cache }}
+          cache-dependency-path: ${{ inputs.cache && format('{0}/**/packages.lock.json', inputs.working-directory) || '' }}
+
+      - name: Restore
+        run: dotnet restore ${{ inputs.solution }}
+
+      - name: Build
+        run: dotnet build ${{ inputs.solution }} --configuration Release --no-restore
+
+      - name: Testes
+        if: inputs.test
+        run: dotnet test ${{ inputs.solution }} --configuration Release --no-build

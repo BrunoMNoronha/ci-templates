@@ -1,45 +1,39 @@
 # ci-templates
 
-Workflows reutilizáveis de CI dos projetos de BrunoMNoronha.
+Workflows reutilizáveis de CI/CD dos projetos de BrunoMNoronha. Padronizam custo, cache e segurança dos GitHub Actions. As regras estão em [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## `node-ci.yml`
+Consumidores fixam a major: `@v1`. Enquanto a `v1` não existir, use `@main`.
 
-CI para projetos Node.js com **pnpm** (npm não é usado): install com lockfile congelado, Prisma opcional, PostgreSQL efêmero opcional, typecheck, lint, testes e build.
+## Workflows
 
-Recursos:
+### `node-ci.yml` — CI de projeto Node.js (pnpm)
 
-- runner fixado (`ubuntu-24.04`) e `timeout-minutes` (padrão 15);
-- cache do store do pnpm e do `.next/cache`;
-- scripts ausentes no `package.json` são ignorados (`pnpm run --if-present`);
-- sem acesso a secrets; o banco é um container de serviço descartável.
+Install com lockfile congelado, Prisma opcional, PostgreSQL efêmero opcional, format/typecheck/lint/testes/build e scripts extras. Runner `ubuntu-24.04`, `timeout-minutes` 15, cache do store do pnpm e do `.next/cache`. Sem acesso a secrets. Exemplo: [`examples/ci.yml`](examples/ci.yml).
 
-Exemplo completo em [`examples/ci.yml`](examples/ci.yml).
+Principais inputs: `node-version-file` (recomendado, ex.: `package.json`), `pnpm-version` (vazio = `packageManager`), `postgres` (+`postgres-image`, +`postgres-db`), `prisma`, `format-check`, `lint`/`typecheck`/`test`/`build`, `extra-scripts` (um script por linha), `next-cache`, `working-directory`, `env`.
 
-### Inputs
+### `vercel-deploy.yml` — deploy na Vercel
 
-| Input | Padrão | Descrição |
-|---|---|---|
-| `job-name` | `Lint, typecheck, testes e build` | Nome exibido do job |
-| `runs-on` | `ubuntu-24.04` | Runner |
-| `timeout-minutes` | `15` | Tempo máximo do job |
-| `working-directory` | `.` | Diretório do projeto |
-| `node-version` | `24` | Versão do Node.js |
-| `pnpm-version` | vazio | Vazio = campo `packageManager` do `package.json` |
-| `postgres` | `false` | Sobe PostgreSQL efêmero e exporta `DATABASE_URL` |
-| `postgres-image` | `postgres:16-alpine` | Imagem do PostgreSQL |
-| `postgres-db` | `ci` | Nome do banco efêmero (quando os testes exigem um nome específico) |
-| `prisma` | `false` | `prisma validate` e, com `postgres`, `prisma migrate deploy` |
-| `next-cache` | `true` | Cache do `.next/cache` |
-| `lint` / `typecheck` / `test` / `build` | `true` | Liga/desliga cada etapa |
-| `env` | vazio | Variáveis **não sensíveis** da CI, `CHAVE=valor` por linha |
+`vercel pull/build/deploy --prebuilt` consumindo um SHA já validado, com migração opcional. Não reexecuta a CI. Exemplos: [`examples/deploy-preview.yml`](examples/deploy-preview.yml), [`examples/deploy-production.yml`](examples/deploy-production.yml).
 
-## Migração de um repositório
+Inputs: `environment`, `ref`, `prod`, `run-migrations` (+`migrate-command`), `vercel-version`, `node-version-file`. Secrets: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`, `MIGRATION_DATABASE_URL` (opcional). Saída: `url`.
 
-O check passa a se chamar `<job do chamador> / <job-name>` (ex.: `ci / Lint, typecheck, testes e build`). Antes do merge, atualize:
+### `docker-build.yml` — build de imagem com cache
 
-1. os rulesets que exigem o check pelo nome;
-2. qualquer workflow que consulte o check pelo nome (ex.: `migracoes.yml` da `upa-do-tenis`).
+Buildx com cache de camadas `type=gha`. Sem push por padrão (valida que a imagem compila). Exemplo: [`examples/docker.yml`](examples/docker.yml).
 
-## Versionamento
+Inputs: `context`, `dockerfile`, `target`, `image`, `tags`, `build-args`, `platforms`, `push`, `registry`. Secrets (só com `push: true`): `REGISTRY_USERNAME`, `REGISTRY_PASSWORD`.
 
-Enquanto em validação, os consumidores usam `@main`. Depois de validado, criar a tag `v1` e trocar para `@v1`.
+### `dotnet-ci.yml` — CI de projeto .NET
+
+Restore/build/testes em `ubuntu-24.04`, SDK fixado por `global.json`, cache de NuGet opcional. Windows só com justificativa (`runs-on: windows-2025`).
+
+Inputs: `global-json-file`, `dotnet-version`, `solution`, `cache`, `test`, `shell`, `runs-on`.
+
+## Nome do check ao migrar
+
+Como reusable workflow, o check aparece como `<job do chamador> / <job-name>` (ex.: `ci / Lint, typecheck, testes e build`). Antes do merge, atualize os rulesets que exigem o check pelo nome.
+
+## Autoteste
+
+[`selftest.yml`](.github/workflows/selftest.yml) exercita `node-ci` e `docker-build` contra as fixtures em [`tests/`](tests) a cada PR.

@@ -1,0 +1,23 @@
+# Exemplo: validar que a imagem Docker compila (sem publicar) em cada PR.
+name: docker
+
+on:
+  pull_request:
+    paths-ignore: ["**.md", "docs/**"]
+  push:
+    branches: [main]
+    paths-ignore: ["**.md", "docs/**"]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  docker:
+    uses: BrunoMNoronha/ci-templates/.github/workflows/docker-build.yml@v1
+    with:
+      image: meu-app
+      push: false

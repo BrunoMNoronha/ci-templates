@@ -1,0 +1,113 @@
+# Workflow reutilizável de build de imagem Docker com cache de camadas (type=gha).
+# Por padrão NÃO faz push: valida que a imagem compila. Para publicar, passe
+# push: true e os secrets do registro.
+#
+# Uso:
+#   jobs:
+#     docker:
+#       uses: BrunoMNoronha/ci-templates/.github/workflows/docker-build.yml@v1
+#       with:
+#         image: meu-app
+name: Build Docker (reutilizável)
+
+on:
+  workflow_call:
+    inputs:
+      context:
+        type: string
+        default: .
+      dockerfile:
+        type: string
+        default: Dockerfile
+      target:
+        description: Estágio do build multi-stage (vazio = último).
+        type: string
+        default: ""
+      image:
+        description: Nome da imagem (sem registro). Usado nas tags quando "tags" está vazio.
+        type: string
+        default: app
+      tags:
+        description: Tags completas, uma por linha. Vazio = <image>:ci-<sha-curto>.
+        type: string
+        default: ""
+      build-args:
+        type: string
+        default: ""
+      platforms:
+        type: string
+        default: linux/amd64
+      push:
+        description: Publica no registro (exige secrets REGISTRY_USERNAME/PASSWORD).
+        type: boolean
+        default: false
+      registry:
+        description: "Host do registro (ex.: ghcr.io). Vazio = Docker Hub."
+        type: string
+        default: ""
+      timeout-minutes:
+        type: number
+        default: 20
+      runs-on:
+        type: string
+        default: ubuntu-24.04
+    secrets:
+      REGISTRY_USERNAME:
+        required: false
+      REGISTRY_PASSWORD:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build da imagem
+    runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+
+      - name: Login no registro
+        if: inputs.push
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+        with:
+          registry: ${{ inputs.registry }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Definir tags
+        id: tags
+        env:
+          INPUT_TAGS: ${{ inputs.tags }}
+          INPUT_IMAGE: ${{ inputs.image }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          if [ -n "$INPUT_TAGS" ]; then
+            printf '%s\n' "$INPUT_TAGS" > tags.txt
+          else
+            printf '%s:ci-%s\n' "$INPUT_IMAGE" "${COMMIT_SHA:0:7}" > tags.txt
+          fi
+          {
+            echo 'value<<EOF'
+            cat tags.txt
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.context }}/${{ inputs.dockerfile }}
+          target: ${{ inputs.target }}
+          platforms: ${{ inputs.platforms }}
+          build-args: ${{ inputs.build-args }}
+          tags: ${{ steps.tags.outputs.value }}
+          push: ${{ inputs.push }}
+          load: ${{ !inputs.push }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
