@@ -1,0 +1,17 @@
+{
+  "name": "fixture-node",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Projeto mínimo para o autoteste do node-ci.yml. Sem dependências.",
+  "packageManager": "pnpm@12.10.1",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "lint": "node -e \"process.exit(0)\"",
+    "typecheck": "node -e \"process.exit(0)\"",
+    "test": "node -e \"console.log('fixture ok')\"",
+    "build": "node -e \"process.exit(0)\"",
+    "test:extra": "node -e \"console.log('extra ok')\""
+  }
+}

@@ -4,7 +4,7 @@
 #
 #   jobs:
 #     ci:
-#       uses: BrunoMNoronha/ci-templates/.github/workflows/node-ci.yml@main
+#       uses: BrunoMNoronha/ci-templates/.github/workflows/node-ci.yml@v1
 #       with:
 #         postgres: true
 #         prisma: true
@@ -38,9 +38,16 @@ on:
         type: string
         default: .
       node-version:
-        description: Versão do Node.js.
+        description: Versão do Node.js (usada quando node-version-file está vazio).
         type: string
         default: "24"
+      node-version-file:
+        description: >-
+          Caminho de um arquivo de versão (package.json, .nvmrc ou .node-version)
+          relativo a working-directory. Tem prioridade sobre node-version e é a
+          forma recomendada: a versão passa a vir do repositório.
+        type: string
+        default: ""
       pnpm-version:
         description: Versão do pnpm. Vazio = usar o campo packageManager do package.json.
         type: string
@@ -50,9 +57,9 @@ on:
         type: boolean
         default: false
       postgres-image:
-        description: Imagem do PostgreSQL efêmero.
+        description: Imagem do PostgreSQL efêmero (iguale à de produção do projeto).
         type: string
-        default: postgres:16-alpine
+        default: postgres:17-alpine
       postgres-db:
         description: >-
           Nome do banco efêmero (usuário e senha são fixos e descartáveis).
@@ -67,6 +74,10 @@ on:
         description: Mantém o cache de build do Next.js (.next/cache) entre execuções.
         type: boolean
         default: true
+      format-check:
+        description: Executa "pnpm run format:check" (ignorado se o script não existir).
+        type: boolean
+        default: false
       lint:
         description: Executa "pnpm run lint" (ignorado se o script não existir).
         type: boolean
@@ -83,6 +94,13 @@ on:
         description: Executa "pnpm run build" (ignorado se o script não existir).
         type: boolean
         default: true
+      extra-scripts:
+        description: >-
+          Scripts pnpm adicionais rodados após o build, um por linha, cada um
+          com "pnpm run --if-present <script>". Só nomes de script
+          (ex.: test:db, test:integration), nunca comandos arbitrários.
+        type: string
+        default: ""
       env:
         description: >-
           Variáveis NÃO sensíveis exclusivas da CI, uma por linha no formato
@@ -124,7 +142,9 @@ jobs:
       CI: "true"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
 
       - name: Exportar variáveis da CI
         if: inputs.env != ''
@@ -152,23 +172,26 @@ jobs:
           echo "DATABASE_URL=postgresql://ci:ci_ephemeral@localhost:5432/${POSTGRES_DB_NAME}?schema=public" >> "$GITHUB_ENV"
 
       # Restaurado antes do install para que o hash não percorra node_modules.
+      # A chave usa o lockfile + o SHA do commit; restore-keys cai no cache mais
+      # recente do mesmo lockfile. Evita re-hashear todo o código-fonte.
       - name: Cache do build do Next.js
         if: inputs.next-cache && inputs.build
-        uses: actions/cache@v4
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: ${{ inputs.working-directory }}/.next/cache
-          key: next-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}-${{ hashFiles('**/*.js', '**/*.jsx', '**/*.ts', '**/*.tsx', '!**/node_modules/**', '!**/.next/**') }}
+          key: next-${{ runner.os }}-${{ hashFiles(format('{0}/pnpm-lock.yaml', inputs.working-directory)) }}-${{ github.sha }}
           restore-keys: |
-            next-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}-
+            next-${{ runner.os }}-${{ hashFiles(format('{0}/pnpm-lock.yaml', inputs.working-directory)) }}-
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
         with:
           version: ${{ inputs.pnpm-version }}
           package_json_file: ${{ inputs.working-directory }}/package.json
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
-          node-version: ${{ inputs.node-version }}
+          node-version: ${{ inputs.node-version-file == '' && inputs.node-version || '' }}
+          node-version-file: ${{ inputs.node-version-file != '' && format('{0}/{1}', inputs.working-directory, inputs.node-version-file) || '' }}
           cache: pnpm
           cache-dependency-path: ${{ inputs.working-directory }}/pnpm-lock.yaml
 
@@ -182,6 +205,10 @@ jobs:
       - name: Aplicar migrations no banco efêmero
         if: inputs.prisma && inputs.postgres
         run: pnpm exec prisma migrate deploy
+
+      - name: Formatação
+        if: inputs.format-check
+        run: pnpm run --if-present format:check
 
       - name: Typecheck
         if: inputs.typecheck
@@ -198,3 +225,20 @@ jobs:
       - name: Build
         if: inputs.build
         run: pnpm run --if-present build
+
+      - name: Scripts adicionais
+        if: inputs.extra-scripts != ''
+        env:
+          EXTRA_SCRIPTS: ${{ inputs.extra-scripts }}
+        run: |
+          while IFS= read -r script; do
+            script="$(echo "$script" | tr -d '[:space:]')"
+            [ -z "$script" ] && continue
+            if ! [[ "$script" =~ ^[A-Za-z0-9:_-]+$ ]]; then
+              echo "Nome de script inválido em 'extra-scripts': $script" >&2
+              exit 1
+            fi
+            echo "::group::pnpm run $script"
+            pnpm run --if-present "$script"
+            echo "::endgroup::"
+          done <<< "$EXTRA_SCRIPTS"

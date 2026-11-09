@@ -1,0 +1,35 @@
+# Autoteste dos workflows reutilizáveis: exercita node-ci e docker-build contra
+# as fixtures em tests/. Roda em PR e em push na main quando algo muda.
+name: selftest
+
+on:
+  pull_request:
+    paths: [".github/workflows/**", "tests/**"]
+  push:
+    branches: [main]
+    paths: [".github/workflows/**", "tests/**"]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  node-ci:
+    uses: ./.github/workflows/node-ci.yml
+    with:
+      working-directory: tests/fixture-node
+      node-version-file: package.json
+      next-cache: false
+      extra-scripts: |
+        test:extra
+
+  docker-build:
+    uses: ./.github/workflows/docker-build.yml
+    with:
+      context: tests/fixture-docker
+      image: fixture
+      push: false

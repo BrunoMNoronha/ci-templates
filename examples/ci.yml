@@ -1,11 +1,13 @@
 # Exemplo de .github/workflows/ci.yml em um repositório consumidor.
-name: CI
+name: ci
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main, production]
+    paths-ignore: ["**.md", "docs/**"]
   push:
     branches: [main]
+    paths-ignore: ["**.md", "docs/**"]
 
 # Em PR, um push novo cancela a execução anterior. Na main nunca cancela:
 # cada commit da main precisa terminar com o check verde.
@@ -20,9 +22,16 @@ jobs:
   ci:
     # PR em rascunho não roda CI; roda ao marcar "Ready for review".
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
-    uses: BrunoMNoronha/ci-templates/.github/workflows/node-ci.yml@main
+    uses: BrunoMNoronha/ci-templates/.github/workflows/node-ci.yml@v1
     with:
+      # A versão do Node vem do repositório (engines.node ou .nvmrc).
+      node-version-file: package.json
       postgres: true
       prisma: true
+      postgres-image: postgres:17-alpine
+      # Scripts extras além de lint/typecheck/test/build:
+      # extra-scripts: |
+      #   format:check
+      #   test:integration
       env: |
         AUTH_SESSION_SECRET=ci-only-nao-usar-fora-da-ci-0123456789
